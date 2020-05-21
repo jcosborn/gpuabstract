@@ -1,12 +1,18 @@
-CXX = g++
+CXX ?= g++
+
+ifeq ($(CXX),xlC)
+CXXFLAGS = -g -O3 -std=c++14 -qsmp=omp -qoffload
+LDFLAGS = -qsmp=omp -qoffload
+else
 CXXFLAGS = -g -O3 -std=c++17 -fopenmp
 LDFLAGS = -fopenmp
+endif
 
 DPCXX = dpcpp
 DPCXXFLAGS = -g -O3 -std=c++17 -fsycl
 DPLDFLAGS = -lOpenCL -lsycl
 
-NVCXX = nvcc-10
+NVCXX = nvcc
 NVCXXFLAGS = -g -O3 -std=c++14 -x cu
 NVLDFLAGS =
 
@@ -31,6 +37,9 @@ axpy_abs_dpc: axpy_abs.cpp backend_dpc.h
 
 axpy_abs_omp: axpy_abs.cpp backend_omp.h
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
+
+axpy_abs_omptarget: axpy_abs.cpp backend_omptarget.h
+	$(CXX) -DUSE_OMP_TARGET $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 .PHONY: clean
 clean: 

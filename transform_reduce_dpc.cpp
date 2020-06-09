@@ -86,14 +86,14 @@ public:
 
   void apply(queue q)
   {
-    uint gx = 1;
-    auto numWorkGroups = range<3>(gx, (uint)arg.n_batch, 1);
-    auto workGroupSize = range<3>(Arg::block_size, 1, 1);
+    uint gx = 1 * Arg::block_size;
+    auto globalSize = range<3>(gx, (uint)arg.n_batch, 1);
+    auto localSize = range<3>(Arg::block_size, 1, 1);
     if(1) {
       //transform_reduce_kernel<<<grid, block>>>(arg);
       //cudaDeviceSynchronize();
       q.submit([&] (handler &h) { h.parallel_for<class transformReduce>
-	    (nd_range<3>(numWorkGroups, workGroupSize),
+	    (nd_range<3>(globalSize, localSize),
 	     [=](nd_item<3> ndi) {
 	       transform_reduce_kernel(arg, ndi);
 	     }); });

@@ -39,9 +39,11 @@ void axpy(queue q, TA a, TX x, TY y, const int n)
   auto f = Axpy(a, x[0], y[0]);
   auto arg = Arg(x, y, f, n);
   auto nthreads = 37;
+  auto globalSize = range<1>(nthreads);
+  auto localSize = range<1>(1);
   q.submit([&] (handler &h) { h.parallel_for<class axpy>
-	(range<1>(nthreads),
-	 //(nd_range<1>(range<1>(n), range<1>(2)),
+	//(range<1>(nthreads),
+	(nd_range<1>(globalSize,localSize),
 	 [=](nd_item<1> ndi) {
 	   Kernel(arg, ndi);
 	 }); });

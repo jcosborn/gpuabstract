@@ -17,8 +17,10 @@ LDTFLAGS = -fopenmp -foffload=nvptx-none -fno-stack-protector
 endif
 
 DPCXX = dpcpp
-DPCXXFLAGS = -g -O3 -std=c++17 -fsycl
-DPLDFLAGS = -lOpenCL -lsycl
+#DPCXXFLAGS = -g -O3 -std=c++17 -fsycl
+#DPLDFLAGS = -lOpenCL -lsycl
+DPCXXFLAGS = -O3 -std=c++17
+DPLDFLAGS =
 
 NVCXX = nvcc
 NVCXXFLAGS = -g -O3 -std=c++14 -x cu

@@ -35,11 +35,18 @@ typedef struct {
 
 typedef queue qudaStream_t;
 
+int have_queue = 0;
+queue qd;
+
 queue
 getQueue(void)
 {
-  default_selector my_selector;
-  return queue(my_selector);
+  if(have_queue==0) {
+    have_queue = 1;
+    default_selector my_selector;
+    qd = queue(my_selector);
+  }
+  return qd;
 }
 
 void
@@ -71,6 +78,7 @@ void *
 qudaMallocManaged(size_t size)
 {
   auto q = getQueue();
+  //auto q = qd;
   auto dev = q.get_device();
   auto ctx = q.get_context();
   void *p = cl::sycl::malloc_shared(size, dev, ctx);

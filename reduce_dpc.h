@@ -3,6 +3,7 @@ using namespace cl::sycl;
 
 #define QUDA_MAX_MULTI_REDUCE 1024
 
+inline void zero(float &v) { v = 0.0; }
 inline void zero(double &v) { v = 0.0; }
 
 
@@ -42,9 +43,10 @@ operator+(const vector_type<scalar,n> &a, const vector_type<scalar,n> &b) {
 }
 
 void initReduce(void);
-double *getDeviceReduceBuffer(void);
-double *getMappedHostReduceBuffer(void);
-double *getHostReduceBuffer(void);
+queue getQueue(void);
+void *getDeviceReduceBuffer(void);
+void *getMappedHostReduceBuffer(void);
+void *getHostReduceBuffer(void);
 unsigned int *getDeviceCountBuffer(void);
 
 template <typename T>
@@ -78,10 +80,11 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
 
   auto lid0 = ndi.get_local_id(0);
   auto lid1 = ndi.get_local_id(1);
+  auto llid = ndi.get_local_linear_id();
   auto grpRg = ndi.get_group_range(0);
   auto grpId = ndi.get_group(0);
   bool isLastBlockDone = false;
-  if (ndi.get_local_linear_id()==0) {
+  if (llid==0) {
     arg.partial[idx*grpRg + grpId] = aggregate;
     //__threadfence(); // flush result
     ndi.mem_fence(access::fence_space::global_and_local);
@@ -89,34 +92,43 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
     // increment global block counter
     //unsigned int value = atomicInc(&count[idx], gridDim.x);
     atomic<unsigned int> acount { global_ptr<unsigned int> {&arg.count[idx]} };
-    unsigned int value = acount.fetch_add(1);
+    //auto gp = global_ptr<uint>(&arg.count[idx]);
+    //auto acount = atomic<uint>(gp);
+    auto value = acount.fetch_add(1);
+    //value = acount.fetch_add(1);
+    //arg.result_d[idx] = value + 1;
+    //arg.result_d[idx] = arg.count[idx];
 
     // determine if last block
     isLastBlockDone = (value == (grpRg-1));
+    //arg.result_d[idx] = isLastBlockDone;
   }
   isLastBlockDone = cl::sycl::intel::broadcast(grp, isLastBlockDone);
 
-#if 0
   // finish the reduction if last block
   if (isLastBlockDone) {
-    unsigned int i = lid1*block_size_x + lid0;
+    uint i = llid;
     T sum;
     zero(sum);
-    while (i<gridDim.x) {
-      sum = r(sum, arg.partial[idx*gridDim.x + i]);
-      //sum += arg.partial[idx*gridDim.x + i];
+    while (i<grpRg) {
+      sum = r(sum, arg.partial[idx*grpRg + i]);
       i += block_size_x*block_size_y;
     }
 
-    sum = (do_sum ? BlockReduce(cub_tmp).Sum(sum) : BlockReduce(cub_tmp).Reduce(sum,r));
+    sum = cl::sycl::intel::reduce(grp, sum, r);
 
     // write out the final reduced value
-    if (threadIdx.y*block_size_x + threadIdx.x == 0) {
+    if (llid == 0) {
       arg.result_d[idx] = sum;
-      count[idx] = 0; // set to zero for next time
+      arg.count[idx] = 0; // set to zero for next time
     }
   }
-#endif
+  //if (lid1*block_size_x + lid0 == 0) {
+    //arg.result_d[idx] = aggregate;
+    //arg.result_d[idx] = arg.partial[idx*grpRg + grpId];
+    //arg.result_d[idx] = arg.count[idx];
+    //arg.result_d[idx] = isLastBlockDone;
+  //}
 }
 
 template <int block_size, typename T, bool do_sum = true,

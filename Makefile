@@ -11,6 +11,9 @@ CXXT ?= g++
 ifeq ($(CXXT),xlC)
 CXXTFLAGS = -g -O3 -std=c++14 -qsmp=omp -qoffload
 LDTFLAGS = -qsmp=omp -qoffload
+else ifeq ($(CXXT),clang++)
+CXXTFLAGS = -g -O3 -std=c++17 -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda
+LDTFLAGS = -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda
 else
 CXXTFLAGS = -g -O3 -std=c++17 -fopenmp -foffload=nvptx-none -fno-stack-protector
 LDTFLAGS = -fopenmp -foffload=nvptx-none -fno-stack-protector

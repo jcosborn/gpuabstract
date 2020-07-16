@@ -14,6 +14,9 @@ LDTFLAGS = -qsmp=omp -qoffload
 else ifeq ($(CXXT),clang++)
 CXXTFLAGS = -g -O3 -std=c++17 -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda
 LDTFLAGS = -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda
+else ifeq ($(CXXT),icpx)
+CXXTFLAGS = -fiopenmp -fopenmp-targets=spir64 -D__STRICT_ANSI__
+LDTFLAGS = -fiopenmp -fopenmp-targets=spir64
 else
 CXXTFLAGS = -g -O3 -std=c++17 -fopenmp -foffload=nvptx-none -fno-stack-protector
 LDTFLAGS = -fopenmp -foffload=nvptx-none -fno-stack-protector
@@ -65,6 +68,16 @@ transform_reduce_cuda.o: transform_reduce_cuda.cpp reduce_cuda.h
 
 transform_reduce_cuda: transform_reduce_cuda.o reduce_cuda.o
 	$(NVCXX) -o $@ $^ $(NVLDFLAGS)
+
+
+reduce_omptarget.o: reduce_omptarget.cpp reduce_omptarget.h
+	$(CXXT) $(CXXTFLAGS) -c -o $@ $<
+
+transform_reduce_omptarget.o: transform_reduce_omptarget.cpp reduce_omptarget.h
+	$(CXXT) $(CXXTFLAGS) -c -o $@ $<
+
+transform_reduce_omptarget: transform_reduce_omptarget.o reduce_omptarget.o
+	$(CXXT) -o $@ $^ $(LDTFLAGS)
 
 
 reduce_dpc.o: reduce_dpc.cpp reduce_dpc.h

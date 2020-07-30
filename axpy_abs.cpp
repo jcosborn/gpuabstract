@@ -34,7 +34,7 @@ __global__ void Kernel(Arg& arg, Dims... ndi)
 template <typename TA, typename TX, typename TY>
 struct Axpy {
   const TA a;
-  Axpy(const TA a, TX x, TY y): a(a) { ; }
+  Axpy(const TA a): a(a) { ; }
   __device__ void operator()(TX &x, TY &y)
   {
     y += a * x;
@@ -42,12 +42,12 @@ struct Axpy {
 };
 
 template <typename TA, typename TX, typename TY>
-auto makeAxpy(const TA a, TX x, TY y) { return Axpy<TA,TX,TY>(a,x,y); }
+auto makeAxpy(const TA a, TX * x, TY * y) { return Axpy<TA,TX,TY>(a); }
 
 template <typename TA, typename TX, typename TY>
 void axpy(qudaStream_t s, TA a, TX x, TY y, const int n)
 {
-  auto f = makeAxpy(a, x[0], y[0]);
+  auto f = makeAxpy(a, x, y);
   auto arg = makeArg(x, y, f, n);
   auto nthreads = 32;
   qudaLaunch(2, nthreads, 0, s, Kernel, arg);

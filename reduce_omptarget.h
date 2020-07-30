@@ -2,7 +2,37 @@
 #include <omp.h>
 #include <stdio.h>
 
-#pragma omp requires unified_shared_memory
+// #pragma omp requires unified_shared_memory
+
+template <typename T>
+T * to_device(const T * x, size_t s) {
+  const int d = omp_get_default_device();
+  const int h = omp_get_initial_device();
+  auto p = (T *)omp_target_alloc(s, d);
+  printf("# to_device: host_ptr@%d = %p  device_ptr@%d = %p  size = %zu\n", h, x, d, p, s);
+  omp_target_memcpy(p, (T *)x, s, 0, 0, d, h);
+  return p;
+}
+
+template <typename T>
+T * to_device(T& x) {
+  constexpr size_t s = sizeof(T);
+  return to_device(&x, s);
+}
+
+template <typename T>
+void from_device(T * host_ptr, T * device_ptr, size_t s) {
+  const int d = omp_get_default_device();
+  const int h = omp_get_initial_device();
+  printf("# from_device: host_ptr@%d = %p  device_ptr@%d = %p  size = %zu\n", h, host_ptr, d, device_ptr, s);
+  omp_target_memcpy(host_ptr, device_ptr, s, 0, 0, h, d);
+}
+
+template <typename T>
+void from_device(T * host_ptr, T * device_ptr) {
+  constexpr size_t s = sizeof(T);
+  from_device(host_ptr, device_ptr, s);
+}
 
 #define __global__
 #define __device__
@@ -71,16 +101,19 @@ double *getDeviceReduceBuffer(void);
 double *getMappedHostReduceBuffer(void);
 double *getHostReduceBuffer(void);
 unsigned int *getDeviceCountBuffer(void);
+void fillHostReduceBufferFromDevice(void);
 
 template <typename T>
 struct ReduceArg {
   int n_batch;
+  const T init;
   T *partial;
   T *result_d;
   T *result_h;
   unsigned int *count;
-  ReduceArg(int n_batch = 1) :
+  ReduceArg(int n_batch = 1, T init = (T)0) :
     n_batch(n_batch),
+    init(init),
     partial(static_cast<T*>(getDeviceReduceBuffer())),
     result_d(static_cast<T*>(getMappedHostReduceBuffer())),
     result_h(static_cast<T*>(getHostReduceBuffer())),
@@ -186,8 +219,8 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
   // finish the reduction if last block
   if (isLastBlockDone) {
     unsigned int i = tiy*block_size_x + tix;
-    T sum;
-    zero(sum);
+    T sum = arg.init;
+    // zero(sum);  // This only works for sum.
     while (i<gdx) {
       sum = r(sum, arg.partial[idx*gdx + i]);
       //sum += arg.partial[idx*gdx + i];

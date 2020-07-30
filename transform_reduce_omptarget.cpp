@@ -14,7 +14,7 @@ struct TransformReduceArg : public ReduceArg<reduce_t> {
   transformer h;
   reducer r;
   TransformReduceArg(const std::vector<T *> &v, count_t n_items, transformer h, reduce_t init, reducer r) :
-    ReduceArg<reduce_t>(v.size()),
+    ReduceArg<reduce_t>(v.size(), init),
     n_items(n_items),
     init(init),
     h(h),
@@ -42,7 +42,7 @@ template <typename Arg> void transform_reduce(Arg &arg)
 
 template <typename Arg>
 __launch_bounds__(Arg::block_size) __global__ void
-transform_reduce_kernel(Arg arg)
+transform_reduce_kernel(Arg& arg)
 {
   using count_t = decltype(arg.n_items);
   using reduce_t = decltype(arg.init);
@@ -59,23 +59,21 @@ transform_reduce_kernel(Arg arg)
   int j = biy;
   auto v = arg.v[j];
   reduce_t r_ = arg.init;
-
   while (i < arg.n_items) {
     auto v_ = arg.h(v[i]);
     r_ = arg.r(r_, v_);
     i += ld * gdx;
   }
-
   reduce<Arg::block_size, reduce_t, false, decltype(arg.r)>(arg, r_, j);
 }
 
 template <typename Arg>
 class TransformReduce
 {
-  Arg &arg;
+  Arg& arg;
 
 public:
-  TransformReduce(Arg &arg) : arg(arg) {}
+  TransformReduce(Arg& arg) : arg(arg) {}
 
   void apply(const cudaStream_t &stream)
   {
@@ -84,11 +82,32 @@ public:
     int ld = Arg::block_size;
     if(1) {
       printf("launch transform_reduce_kernel %d %d\n",gd,ld);
-#pragma omp target teams num_teams(gd)
+      auto device_arg = to_device(arg);
+/*
+      auto p = arg.result_d;
+      auto v0 = arg.v[0];
+      auto n_items = arg.n_items;
+*/
+#pragma omp target teams num_teams(gd) is_device_ptr(device_arg)
+{
 #pragma omp parallel num_threads(ld)
-      transform_reduce_kernel(arg);
-      for (decltype(arg.n_batch) j = 0; j < arg.n_batch; j++)
+{
+/*
+      arg.result_d = p;
+      arg.v[0] = v0;
+      arg.n_items = n_items;
+*/
+	  transform_reduce_kernel(*device_arg);
+}
+}
+      omp_target_free(device_arg, omp_get_default_device());
+      fillHostReduceBufferFromDevice();
+      printf("arg.result_d = %p\n", arg.result_d);
+      printf("arg.result_h = %p\n", arg.result_h);
+      for (decltype(arg.n_batch) j = 0; j < arg.n_batch; j++) {
+        printf("arg.result_h[%d] = %g\n", j, arg.result_h[j]);
         arg.result[j] = arg.result_h[j];
+      }
     } else {
       transform_reduce(arg);
     }
@@ -165,8 +184,16 @@ int main() {
 
   std::cout << "Inputs x: "<<x[0]<<", "<<x[1]<<", ..., "<<x[n-1]<<std::endl;
 
-  double r = sum(0, x, n);
-#pragma omp taskwait
+  double r = 0.0;
+  if(0) {
+    #pragma omp target data map(tofrom:x[0:n]) use_device_ptr(x)
+    r = sum(0, x, n);
+  } else {
+    auto xp = to_device(x, n*sizeof(float));
+    r = sum(0, xp, n);
+    omp_target_free(xp, omp_get_default_device());
+  }
+
   printf("r: %g\n", r);
   //printf("x[0]: %g\n", x[0]);
 

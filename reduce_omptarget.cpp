@@ -3,6 +3,7 @@
 void *device_malloc(size_t size) {
   int d = omp_get_default_device();
   void *ptr = omp_target_alloc(size, d);
+  //void *ptr = malloc(size);
   if (NULL == ptr) {
     printf("Failed to allocate device memory of size %zu\n", size);
     exit(-1);
@@ -31,7 +32,7 @@ void initReduce(void) {
   size_t bytes = 1024*8;
   d_reduce = (double *) device_malloc(bytes);
   h_reduce = (double *) pinned_malloc(bytes);
-  hd_reduce = h_reduce;
+  hd_reduce = (double *) device_malloc(bytes);
   d_count = (unsigned int *) device_malloc(QUDA_MAX_MULTI_REDUCE*sizeof(unsigned int));
 #pragma omp target teams distribute parallel for is_device_ptr(d_count)
   for(int i=0;i<QUDA_MAX_MULTI_REDUCE;++i) d_count[i] = 0;
@@ -41,3 +42,4 @@ double *getDeviceReduceBuffer(void) { return d_reduce; }
 double *getMappedHostReduceBuffer(void) { return hd_reduce; }
 double *getHostReduceBuffer(void) { return h_reduce; }
 unsigned int *getDeviceCountBuffer(void) { return d_count; }
+void fillHostReduceBufferFromDevice(void) { from_device(h_reduce, hd_reduce, 1024*8); }

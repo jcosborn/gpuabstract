@@ -107,6 +107,8 @@ template <typename T>
 struct ReduceArg {
   int n_batch;
   const T init;
+  void *reduce_tmp;
+  bool *isLastBlockDone;
   T *partial;
   T *result_d;
   T *result_h;
@@ -155,7 +157,7 @@ struct BlockReduce
       const int offset = 1 << i;
       // this is bad, but we don't have warp barrier
 #pragma omp barrier
-      input = reduction_op(input, temp_storage.reduce[warp_id][lane_id+offset]);
+      input = reduction_op(input, temp_storage.reduce[warp_id][(lane_id+offset)%warp_threads]);
     }
 
 #pragma omp barrier
@@ -179,16 +181,16 @@ __device__ inline void
 reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
   // assume block_size_x*block_size_y == num_threads
   typedef BlockReduce<T, block_size_x, block_size_y> BlockReduce;
-  typename BlockReduce::TempStorage tmp;
-#pragma omp allocate(tmp) allocator(omp_pteam_mem_alloc)
+  typename BlockReduce::TempStorage *tmp = (typename BlockReduce::TempStorage *)arg.reduce_tmp;
+// #pragma omp allocate(tmp) allocator(omp_pteam_mem_alloc)
 
   Reducer r;
   // T aggregate = (do_sum ? BlockReduce(cub_tmp).Sum(in) :
   //                BlockReduce(cub_tmp).Reduce(in, r));
-  T aggregate = BlockReduce(tmp).Reduce(in, r);
+  T aggregate = BlockReduce(*tmp).Reduce(in, r);
 
-  bool isLastBlockDone;
-#pragma omp allocate(isLastBlockDone) allocator(omp_pteam_mem_alloc)
+  bool *isLastBlockDone = arg.isLastBlockDone;
+// #pragma omp allocate(isLastBlockDone) allocator(omp_pteam_mem_alloc)
   int gd = omp_get_num_teams();
   int ld = omp_get_num_threads();  // block_size_x*block_size_y
   int gi = omp_get_team_num();  // blockIdx.x + blockIdx.y*gridDim.x
@@ -205,19 +207,19 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
     // __threadfence(); // flush result
 
     // increment global block counter
-    unsigned int value;
+    unsigned int value = 0;
 #pragma omp atomic capture
     value = arg.count[idx]++;  // if(arg.count[idx]>gdx)arg.count[idx]=0;
 
     // determine if last block
-    isLastBlockDone = (value == (gdx-1));
+    *isLastBlockDone = (value == (gdx-1));
   }
 
 #pragma omp barrier
   // __syncthreads();
 
   // finish the reduction if last block
-  if (isLastBlockDone) {
+  if (*isLastBlockDone) {
     unsigned int i = tiy*block_size_x + tix;
     T sum = arg.init;
     // zero(sum);  // This only works for sum.
@@ -228,7 +230,7 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
     }
 
     // sum = (do_sum ? BlockReduce(cub_tmp).Sum(sum) : BlockReduce(cub_tmp).Reduce(sum,r));
-    sum = BlockReduce(tmp).Reduce(sum,r);
+    sum = BlockReduce(*tmp).Reduce(sum,r);
 
     // write out the final reduced value
     if (li == 0) {

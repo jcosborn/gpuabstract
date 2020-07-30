@@ -83,21 +83,17 @@ public:
     if(1) {
       printf("launch transform_reduce_kernel %d %d\n",gd,ld);
       auto device_arg = to_device(arg);
-/*
-      auto p = arg.result_d;
-      auto v0 = arg.v[0];
-      auto n_items = arg.n_items;
-*/
 #pragma omp target teams num_teams(gd) is_device_ptr(device_arg)
 {
+      // shared local storage, workaround for the buggy support of allocator(omp_pteam_mem_alloc)
+      typedef BlockReduce<decltype(arg.init), Arg::block_size, 1> BlockReduce;
+      typename BlockReduce::TempStorage reduce_tmp;
+      device_arg->reduce_tmp = (void*)&reduce_tmp;
+      bool isLastBlockDone = false;
+      device_arg->isLastBlockDone = &isLastBlockDone;
 #pragma omp parallel num_threads(ld)
 {
-/*
-      arg.result_d = p;
-      arg.v[0] = v0;
-      arg.n_items = n_items;
-*/
-	  transform_reduce_kernel(*device_arg);
+      transform_reduce_kernel(*device_arg);
 }
 }
       omp_target_free(device_arg, omp_get_default_device());

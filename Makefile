@@ -1,3 +1,5 @@
+NVARCH ?= sm_60
+
 CXX ?= g++
 ifeq ($(CXX),xlC)
 CXXFLAGS = -g -O3 -std=c++14 -qsmp=omp
@@ -12,8 +14,8 @@ ifeq ($(CXXT),xlC)
 CXXTFLAGS = -g -O3 -std=c++14 -qsmp=omp -qoffload
 LDTFLAGS = -qsmp=omp -qoffload
 else ifeq ($(CXXT),clang++)
-CXXTFLAGS = -g -O3 -std=c++17 -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda
-LDTFLAGS = -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda
+CXXTFLAGS = -g -std=c++17 -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda -Xopenmp-target -march=$(NVARCH)
+LDTFLAGS = -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda -Xopenmp-target -march=$(NVARCH)
 else ifeq ($(CXXT),icpx)
 CXXTFLAGS = -fiopenmp -fopenmp-targets=spir64 -D__STRICT_ANSI__
 LDTFLAGS = -fiopenmp -fopenmp-targets=spir64
@@ -57,7 +59,7 @@ axpy_abs_omp: axpy_abs.cpp backend_omp.h
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS)
 
 axpy_abs_omptarget: axpy_abs.cpp backend_omptarget.h
-	$(CXXT) -DUSE_OMP_TARGET $(CXXTFLAGS) -o $@ $< $(LDTFLAGS)
+	$(CXXT) -DUSE_OMP_TARGET $(CXXTFLAGS) -o $@ $<
 
 
 reduce_cuda.o: reduce_cuda.cpp reduce_cuda.h

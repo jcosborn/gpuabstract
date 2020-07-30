@@ -4,8 +4,10 @@
 #include <stdio.h>
 #include <functional>
 
-// xlC or g++ 10.1 does not recognize this, but this is the default?!
+// xlC or g++ 10.1 does not recognize this, but this is the default on power9
 // #pragma omp requires unified_shared_memory
+// Transfer data manually.
+#define DEVICE_NO_USM
 
 #define __global__
 #define __device__

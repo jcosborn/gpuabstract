@@ -17,7 +17,7 @@ auto makeArg(TR r, TX x, TF f, int length) {
 }
 
 template <typename Arg, typename... Dims>
-__global__ void Kernel(Arg arg, Dims... ndi)
+__global__ void Kernel(Arg& arg, Dims... ndi)
 {
   //unsigned int i = blockIdx.x * (blockDim.x) + threadIdx.x;
   //unsigned int gridSize = gridDim.x * blockDim.x;
@@ -40,6 +40,7 @@ struct Axpy {
     y += a * x;
   }
 };
+
 template <typename TA, typename TX, typename TY>
 auto makeAxpy(const TA a, TX x, TY y) { return Axpy<TA,TX,TY>(a,x,y); }
 
@@ -72,9 +73,27 @@ int main() {
   std::cout << "Inputs x: "<<x[0]<<", "<<x[1]<<", ..., "<<x[n-1]<<std::endl;
   std::cout << "Inputs y: "<<y[0]<<", "<<y[1]<<", ..., "<<y[n-1]<<std::endl;
 
-  axpy(s, 2.0, x, y, n);
+#ifndef DEVICE_NO_USM
+    axpy(s, 2.0, x, y, n);
+    qudaStreamSynchronize(s);
+#else
+  if(0) {	// if the compiler supports the pragma below
+    #pragma omp target data map(to:x[0:n]) map(tofrom:y[0:n]) use_device_ptr(x,y)
+    axpy(s, 2.0, x, y, n);
+    qudaStreamSynchronize(s);
+  } else {	// if the compiler does not support the above
+    auto xp = (float *)omp_target_alloc(n*sizeof(float), dev);
+    auto yp = (float *)omp_target_alloc(n*sizeof(float), dev);
+    omp_target_memcpy(xp, x, n*sizeof(float), 0, 0, dev, omp_get_initial_device());
+    omp_target_memcpy(yp, y, n*sizeof(float), 0, 0, dev, omp_get_initial_device());
+    axpy(s, 2.0, xp, yp, n);
+    qudaStreamSynchronize(s);
+    omp_target_memcpy(y, yp, n*sizeof(float), 0, 0, omp_get_initial_device(), dev);
+    omp_target_free(xp, omp_get_default_device());
+    omp_target_free(yp, omp_get_default_device());
+  }
+#endif
 
-  qudaStreamSynchronize(s);
   std::cout << "Output: "<<y[0]<<", "<<y[1]<<", ..., "<<y[n-1]<<std::endl;
   for(int i=0; i<n; i++) {
     auto r = 4*i + 3;

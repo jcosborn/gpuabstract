@@ -1,6 +1,7 @@
 #pragma once
 #include <omp.h>
-#include <stdio.h>
+#include <cstdio>
+#include <cstdlib>
 
 // #pragma omp requires unified_shared_memory
 
@@ -179,7 +180,7 @@ template <int block_size_x, int block_size_y, typename T,
 	  bool do_sum = true, typename Reducer = plus<T>>
 __device__ inline void
 reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
-  // assume block_size_x*block_size_y == num_threads
+  // CANNOT assume block_size_x*block_size_y == num_threads
   typedef BlockReduce<T, block_size_x, block_size_y> BlockReduce;
   typename BlockReduce::TempStorage *tmp = (typename BlockReduce::TempStorage *)arg.reduce_tmp;
 // #pragma omp allocate(tmp) allocator(omp_pteam_mem_alloc)
@@ -192,15 +193,17 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
   bool *isLastBlockDone = arg.isLastBlockDone;
 // #pragma omp allocate(isLastBlockDone) allocator(omp_pteam_mem_alloc)
   int gd = omp_get_num_teams();
-  int ld = omp_get_num_threads();  // block_size_x*block_size_y
+  int ld = omp_get_num_threads();  // NOT guaranteed block_size_x*block_size_y
   int gi = omp_get_team_num();  // blockIdx.x + blockIdx.y*gridDim.x
   int li = omp_get_thread_num();  // threadIdx.x + threadIdx.y*blockDim.x
   auto nb = arg.n_batch;  // gridDim.y
   auto gdx = gd/nb;  // gridDim.x
   auto bix = gi%gdx;  // blockIdx.x
   auto biy = gi/gdx;  // blockIdx.y
-  auto tix = li%block_size_x;  // threadIdx.x
-  auto tiy = li/block_size_x;  // threadIdx.y
+  int real_block_size_y = block_size_y;	// inherit y
+  int real_block_size_x = (ld+block_size_y-1)/real_block_size_y;	// compute x
+  auto tix = li%real_block_size_x;  // threadIdx.x
+  auto tiy = li/real_block_size_x;  // threadIdx.y
   if (li == 0) {
     arg.partial[idx*gdx + bix] = aggregate;
     // TODO: the flush may not be necessary because of the barrier down below
@@ -210,6 +213,8 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
     unsigned int value = 0;
 #pragma omp atomic capture
     value = arg.count[idx]++;  // if(arg.count[idx]>gdx)arg.count[idx]=0;
+    // arg.partial[idx*gdx + bix] = 1000.0*gd+ld+0.001*block_size_x+0.0001*block_size_y;	// DEBUG
+    // arg.partial[idx*gdx + bix] = 1000.0*gd+ld+0.001*real_block_size_x+0.0001*real_block_size_y;	// DEBUG
 
     // determine if last block
     *isLastBlockDone = (value == (gdx-1));
@@ -220,13 +225,15 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
 
   // finish the reduction if last block
   if (*isLastBlockDone) {
-    unsigned int i = tiy*block_size_x + tix;
+    // unsigned int i = tiy*real_block_size_x + tix;
+    unsigned int i = li;
     T sum = arg.init;
     // zero(sum);  // This only works for sum.
     while (i<gdx) {
       sum = r(sum, arg.partial[idx*gdx + i]);
       //sum += arg.partial[idx*gdx + i];
-      i += block_size_x*block_size_y;
+      //i += real_block_size_x*real_block_size_y;
+      i += ld;
     }
 
     // sum = (do_sum ? BlockReduce(cub_tmp).Sum(sum) : BlockReduce(cub_tmp).Reduce(sum,r));

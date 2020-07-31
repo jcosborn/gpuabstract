@@ -83,7 +83,9 @@ public:
     if(1) {
       printf("launch transform_reduce_kernel %d %d\n",gd,ld);
       auto device_arg = to_device(arg);
-#pragma omp target teams num_teams(gd) is_device_ptr(device_arg)
+      int nteams = 0;
+      int nthreads = 0;
+#pragma omp target teams num_teams(gd) is_device_ptr(device_arg) map(tofrom:nteams,nthreads)
 {
       // shared local storage, workaround for the buggy support of allocator(omp_pteam_mem_alloc)
       typedef BlockReduce<decltype(arg.init), Arg::block_size, 1> BlockReduce;
@@ -93,15 +95,26 @@ public:
       device_arg->isLastBlockDone = &isLastBlockDone;
 #pragma omp parallel num_threads(ld)
 {
+      if(omp_get_team_num()==0 && omp_get_thread_num()==0) {
+        nteams = omp_get_num_teams();
+        nthreads = omp_get_num_threads();
+      }
       transform_reduce_kernel(*device_arg);
 }
 }
+      printf("actual launched teams %d, threads %d\n", nteams, nthreads);
       omp_target_free(device_arg, omp_get_default_device());
+/*
+      double *partial = (double *)malloc(1024*8);
+      from_device(partial, arg.partial, 1024*8);
+      for (int j = 0; j < 100; j++) printf("arg.partial[%d] = %.16g\n", j, partial[j]);
+      free(partial);
+*/
       fillHostReduceBufferFromDevice();
-      printf("arg.result_d = %p\n", arg.result_d);
-      printf("arg.result_h = %p\n", arg.result_h);
+      // printf("arg.result_d = %p\n", arg.result_d);
+      // printf("arg.result_h = %p\n", arg.result_h);
       for (decltype(arg.n_batch) j = 0; j < arg.n_batch; j++) {
-        printf("arg.result_h[%d] = %g\n", j, arg.result_h[j]);
+        // printf("arg.result_h[%d] = %.16g\n", j, arg.result_h[j]);
         arg.result[j] = arg.result_h[j];
       }
     } else {
@@ -190,7 +203,7 @@ int main() {
     omp_target_free(xp, omp_get_default_device());
   }
 
-  printf("r: %g\n", r);
+  printf("r: %.16g\n", r);
   //printf("x[0]: %g\n", x[0]);
 
   double rc = 0.0;

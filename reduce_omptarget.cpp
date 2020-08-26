@@ -29,7 +29,7 @@ static double *hd_reduce=0;
 static unsigned int *d_count=0;
 
 void initReduce(void) {
-  size_t bytes = 1024*8;
+  size_t bytes = DEVPARAM_RESBUFLEN*8;
   d_reduce = (double *) device_malloc(bytes);
   h_reduce = (double *) pinned_malloc(bytes);
   hd_reduce = (double *) device_malloc(bytes);
@@ -42,4 +42,4 @@ double *getDeviceReduceBuffer(void) { return d_reduce; }
 double *getMappedHostReduceBuffer(void) { return hd_reduce; }
 double *getHostReduceBuffer(void) { return h_reduce; }
 unsigned int *getDeviceCountBuffer(void) { return d_count; }
-void fillHostReduceBufferFromDevice(void) { from_device(h_reduce, hd_reduce, 1024*8); }
+void fillHostReduceBufferFromDevice(void) { from_device(h_reduce, hd_reduce, DEVPARAM_RESBUFLEN*8); }

@@ -3,6 +3,38 @@
 #include <cstdio>
 #include <cstdlib>
 
+#ifndef DEVPARAM_NTEAM
+#define DEVPARAM_NTEAM 32
+#endif
+#ifndef DEVPARAM_NTHREAD
+#define DEVPARAM_NTHREAD 512
+#endif
+#ifndef DEVPARAM_RESBUFLEN
+#define DEVPARAM_RESBUFLEN 1024
+#endif
+
+#ifndef DEVPARAM_WARP_THREADS
+#define DEVPARAM_WARP_THREADS 32
+#endif
+#ifndef DEVPARAM_WARP_STEPS
+// log2(DEVPARAM_WARP_THREADS)
+#if DEVPARAM_WARP_THREADS == 1
+#define DEVPARAM_WARP_STEPS 0
+#elif DEVPARAM_WARP_THREADS == 2
+#define DEVPARAM_WARP_STEPS 1
+#elif DEVPARAM_WARP_THREADS == 4
+#define DEVPARAM_WARP_STEPS 2
+#elif DEVPARAM_WARP_THREADS == 8
+#define DEVPARAM_WARP_STEPS 3
+#elif DEVPARAM_WARP_THREADS == 16
+#define DEVPARAM_WARP_STEPS 4
+#elif DEVPARAM_WARP_THREADS == 32
+#define DEVPARAM_WARP_STEPS 5
+#elif DEVPARAM_WARP_THREADS == 64
+#define DEVPARAM_WARP_STEPS 6
+#endif
+#endif
+
 // #pragma omp requires unified_shared_memory
 
 template <typename T>
@@ -10,7 +42,9 @@ T * to_device(const T * x, size_t s) {
   const int d = omp_get_default_device();
   const int h = omp_get_initial_device();
   auto p = (T *)omp_target_alloc(s, d);
+#ifdef VERBOSE_KERNEL
   printf("# to_device: host_ptr@%d = %p  device_ptr@%d = %p  size = %zu\n", h, x, d, p, s);
+#endif
   omp_target_memcpy(p, (T *)x, s, 0, 0, d, h);
   return p;
 }
@@ -25,7 +59,9 @@ template <typename T>
 void from_device(T * host_ptr, T * device_ptr, size_t s) {
   const int d = omp_get_default_device();
   const int h = omp_get_initial_device();
+#ifdef VERBOSE_KERNEL
   printf("# from_device: host_ptr@%d = %p  device_ptr@%d = %p  size = %zu\n", h, host_ptr, d, device_ptr, s);
+#endif
   omp_target_memcpy(host_ptr, device_ptr, s, 0, 0, h, d);
 }
 
@@ -42,7 +78,7 @@ void from_device(T * host_ptr, T * device_ptr) {
 #define __launch_bounds__(x)
 typedef int cudaStream_t;
 
-#define QUDA_MAX_MULTI_REDUCE 1024
+#define QUDA_MAX_MULTI_REDUCE DEVPARAM_RESBUFLEN
 
 __device__ __host__ inline void zero(double &v) { v = 0.0; }
 
@@ -134,8 +170,8 @@ template <typename T, int block_dim_x, int block_dim_y = 1>
 struct BlockReduce
 {
   static constexpr int block_threads = block_dim_x*block_dim_y;
-  static constexpr int warp_threads = 32;
-  static constexpr int warp_steps = 5;  // log2(32)
+  static constexpr int warp_threads = DEVPARAM_WARP_THREADS;
+  static constexpr int warp_steps = DEVPARAM_WARP_STEPS;  // log2(warp_threads)
   static constexpr int warps = (block_threads + warp_threads - 1) / warp_threads;
   struct TempStorage
   {
@@ -180,7 +216,6 @@ template <int block_size_x, int block_size_y, typename T,
 	  bool do_sum = true, typename Reducer = plus<T>>
 __device__ inline void
 reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
-  // CANNOT assume block_size_x*block_size_y == num_threads
   typedef BlockReduce<T, block_size_x, block_size_y> BlockReduce;
   typename BlockReduce::TempStorage *tmp = (typename BlockReduce::TempStorage *)arg.reduce_tmp;
 // #pragma omp allocate(tmp) allocator(omp_pteam_mem_alloc)
@@ -200,10 +235,16 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx=0) {
   auto gdx = gd/nb;  // gridDim.x
   auto bix = gi%gdx;  // blockIdx.x
   auto biy = gi/gdx;  // blockIdx.y
+#ifdef OMPTARGET_HAS_LIMITED_THREADS
+  // CANNOT assume block_size_x*block_size_y == num_threads
   int real_block_size_y = block_size_y;	// inherit y
   int real_block_size_x = (ld+block_size_y-1)/real_block_size_y;	// compute x
   auto tix = li%real_block_size_x;  // threadIdx.x
   auto tiy = li/real_block_size_x;  // threadIdx.y
+#else
+  auto tix = li%block_size_x;  // threadIdx.x
+  auto tiy = li/block_size_x;  // threadIdx.y
+#endif
   if (li == 0) {
     arg.partial[idx*gdx + bix] = aggregate;
     // TODO: the flush may not be necessary because of the barrier down below

@@ -35,7 +35,7 @@ static double *h_reduce=0;
 static double *hd_reduce=0;
 
 void initReduce(void) {
-  size_t bytes = 1024*8;
+  size_t bytes = DEVPARAM_RESBUFLEN*8;
   d_reduce = (double *) device_malloc(bytes);
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, 0);

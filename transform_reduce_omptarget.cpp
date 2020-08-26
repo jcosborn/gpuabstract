@@ -5,7 +5,7 @@
 template <typename reduce_t, typename T, typename count_t,
 	  typename transformer, typename reducer>
 struct TransformReduceArg : public ReduceArg<reduce_t> {
-  static constexpr int block_size = 512;
+  static constexpr int block_size = DEVPARAM_NTHREAD;
   static constexpr int n_batch_max = 4;
   const T *v[n_batch_max];
   count_t n_items;
@@ -77,16 +77,23 @@ public:
 
   void apply(const cudaStream_t &stream)
   {
-    uint gx = 32;
+    uint gx = DEVPARAM_NTEAM;
     int gd = gx*arg.n_batch;
     int ld = Arg::block_size;
     if(1) {
+#ifdef VERBOSE_KERNEL
       printf("launch transform_reduce_kernel %d %d\n",gd,ld);
+#endif
       auto device_arg = to_device(arg);
+#ifdef VERBOSE_KERNEL
       int nteams = 0;
       int nthreads = 0;
-#pragma omp target teams num_teams(gd) is_device_ptr(device_arg) map(tofrom:nteams,nthreads)
+#pragma omp target teams num_teams(gd) thread_limit(ld) is_device_ptr(device_arg) map(tofrom:nteams,nthreads)
+#else
+#pragma omp target teams num_teams(gd) thread_limit(ld) is_device_ptr(device_arg)
+#endif
 {
+      // thread_limit is required (at least for xlC)
       // shared local storage, workaround for the buggy support of allocator(omp_pteam_mem_alloc)
       typedef BlockReduce<decltype(arg.init), Arg::block_size, 1> BlockReduce;
       typename BlockReduce::TempStorage reduce_tmp;
@@ -95,14 +102,18 @@ public:
       device_arg->isLastBlockDone = &isLastBlockDone;
 #pragma omp parallel num_threads(ld)
 {
+#ifdef VERBOSE_KERNEL
       if(omp_get_team_num()==0 && omp_get_thread_num()==0) {
         nteams = omp_get_num_teams();
         nthreads = omp_get_num_threads();
       }
+#endif
       transform_reduce_kernel(*device_arg);
 }
 }
+#ifdef VERBOSE_KERNEL
       printf("actual launched teams %d, threads %d\n", nteams, nthreads);
+#endif
       omp_target_free(device_arg, omp_get_default_device());
 /*
       double *partial = (double *)malloc(1024*8);
@@ -178,6 +189,7 @@ double sum(cudaStream_t s, TX *x, const int n)
   return r;
 }
 
+#ifndef BENCHMARK
 int main() {
   struct {char name[256];} prop;
   int dev = omp_get_default_device();
@@ -214,3 +226,4 @@ int main() {
     std::cout << r << " != " << rc << std::endl;
   }
 }
+#endif

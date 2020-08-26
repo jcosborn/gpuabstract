@@ -20,7 +20,7 @@ template <typename T> struct identity {
 template <typename reduce_t, typename T, typename count_t,
 	  typename transformer, typename reducer>
 struct TransformReduceArg : public ReduceArg<reduce_t> {
-  static constexpr int block_size = 512;
+  static constexpr int block_size = DEVPARAM_NTHREAD;
   static constexpr int n_batch_max = 4;
   const T *v[n_batch_max];
   count_t n_items;
@@ -87,7 +87,7 @@ public:
 
   void apply(const cudaStream_t &stream)
   {
-    uint gx = 32;
+    uint gx = DEVPARAM_NTEAM;
     dim3 grid = { gx, (uint)arg.n_batch, 1 };
     dim3 block = { Arg::block_size, 1, 1 };
     if(1) {
@@ -156,6 +156,7 @@ double sum(cudaStream_t s, TX *x, const int n)
   return r;
 }
 
+#ifndef BENCHMARK
 int main() {
   cudaError_t err;
   cudaDeviceProp prop;
@@ -190,3 +191,4 @@ int main() {
     std::cout << r << " != " << rc << std::endl;
   }
 }
+#endif

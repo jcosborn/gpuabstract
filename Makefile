@@ -92,6 +92,56 @@ transform_reduce_dpc: transform_reduce_dpc.o reduce_dpc.o
 	$(DPCXX) -o $@ $^ $(NVLDFLAGS)
 
 
+# Compile time parameters
+CTP_NTEAMS=32 64 128 256 512 1024
+CTP_NTHREADS=8 16 32 64 128 256 512 1024
+CTP_RESBUFLENS=1 4 16 64 256 1024
+CTP_OMPWARPS=1 2 4 8 16 32 64
+
+define all_bench_sum_cuda =
+BENCH_SUM_EXES += bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2)
+bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2): bench_sum.h reduce_cuda.h transform_reduce_cuda.cpp
+bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2): bench_sum_cuda.cpp reduce_cuda.cpp
+	$(NVCXX) $(NVCXXFLAGS) -Xcompiler=-fopenmp -o $$@ \
+		-DBENCHMARK \
+		-DDEVPARAM_NTEAM=$(1) \
+		-DDEVPARAM_NTHREAD=$(2) \
+		-DDEVPARAM_RESBUFLEN=$(3) \
+		bench_sum_cuda.cpp reduce_cuda.cpp
+endef
+
+define all_bench_sum_omptarget =
+BENCH_SUM_EXES += bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4)
+bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4): bench_sum.h reduce_omptarget.h transform_reduce_omptarget.cpp
+bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4): bench_sum_omptarget.cpp reduce_omptarget.cpp
+	$(CXXT) $(CXXTFLAGS) -o $$@ \
+		-DBENCHMARK \
+		-DDEVPARAM_NTEAM=$(1) \
+		-DDEVPARAM_NTHREAD=$(2) \
+		-DDEVPARAM_RESBUFLEN=$(3) \
+		-DDEVPARAM_WARP_THREADS=$(4) \
+		bench_sum_omptarget.cpp reduce_omptarget.cpp
+endef
+
+define all_bench_sum_omptarget_loop =
+BENCH_SUM_EXES += bench_sum_omptarget_loop_team$(1)_thread$(2)
+bench_sum_omptarget_loop_team$(1)_thread$(2): bench_sum.h
+bench_sum_omptarget_loop_team$(1)_thread$(2): bench_sum_omptarget_loop.cpp
+	$(CXXT) $(CXXTFLAGS) -o $$@ \
+		-DBENCHMARK \
+		-DDEVPARAM_NTEAM=$(1) \
+		-DDEVPARAM_NTHREAD=$(2) \
+		bench_sum_omptarget_loop.cpp
+endef
+
+$(foreach m,$(CTP_NTEAMS),$(foreach n,$(CTP_NTHREADS),$(foreach l,$(CTP_RESBUFLENS),$(eval $(call all_bench_sum_cuda,$(m),$(n),$(l))))))
+$(foreach m,$(CTP_NTEAMS),$(foreach n,$(CTP_NTHREADS),$(foreach l,$(CTP_RESBUFLENS),$(foreach w,$(CTP_OMPWARPS),$(eval $(call all_bench_sum_omptarget,$(m),$(n),$(l),$(w)))))))
+$(foreach m,$(CTP_NTEAMS),$(foreach n,$(CTP_NTHREADS),$(eval $(call all_bench_sum_omptarget_loop,$(m),$(n)))))
+
+BENCHMARKS = $(filter-out %thread8_warp16 %thread8_warp32 %thread8_warp64 %thread16_warp32 %thread16_warp64 %thread32_warp64,$(BENCH_SUM_EXES))
+.PHONY: bench_sum
+bench_sum: $(BENCHMARKS)
+
 .PHONY: clean
 clean: 
 	rm -rf axpy_dpc axpy_cuda axpy_abs_cuda axpy_abs_dpc axpy_abs_omp

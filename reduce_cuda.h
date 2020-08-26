@@ -2,7 +2,17 @@
 #include <cuda_runtime.h>
 #include "cub/cub.cuh"
 
-#define QUDA_MAX_MULTI_REDUCE 1024
+#ifndef DEVPARAM_NTEAM
+#define DEVPARAM_NTEAM 32
+#endif
+#ifndef DEVPARAM_NTHREAD
+#define DEVPARAM_NTHREAD 512
+#endif
+#ifndef DEVPARAM_RESBUFLEN
+#define DEVPARAM_RESBUFLEN 1024
+#endif
+
+#define QUDA_MAX_MULTI_REDUCE DEVPARAM_RESBUFLEN
 
 __device__ __host__ inline void zero(double &v) { v = 0.0; }
 

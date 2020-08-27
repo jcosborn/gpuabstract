@@ -11,7 +11,7 @@ endif
 
 CXXT ?= g++
 ifeq ($(CXXT),xlC)
-CXXTFLAGS = -g -O3 -std=c++14 -qsmp=omp -qoffload
+CXXTFLAGS = -O3 -std=c++14 -qsmp=omp -qoffload
 LDTFLAGS = -qsmp=omp -qoffload
 else ifeq ($(CXXT),clang++)
 CXXTFLAGS = -g -std=c++17 -fopenmp -fopenmp-targets=nvptx64-nvidia-cuda -Xopenmp-target -march=$(NVARCH)
@@ -31,7 +31,7 @@ DPCXXFLAGS = -O3 -std=c++17
 DPLDFLAGS =
 
 NVCXX = nvcc
-NVCXXFLAGS = -g -O3 -std=c++14 -x cu
+NVCXXFLAGS = -O3 -std=c++14 -x cu
 NVLDFLAGS =
 
 #all: axpy_dpc
@@ -99,46 +99,52 @@ CTP_RESBUFLENS=1 4 16 64 256 1024
 CTP_OMPWARPS=1 2 4 8 16 32 64
 
 define all_bench_sum_cuda =
-BENCH_SUM_EXES += bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2)
-bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2): bench_sum.h reduce_cuda.h transform_reduce_cuda.cpp
-bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2): bench_sum_cuda.cpp reduce_cuda.cpp
-	$(NVCXX) $(NVCXXFLAGS) -Xcompiler=-fopenmp -o $$@ \
+BENCH_SUM_EXES += exe/bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2)/exe
+exe/bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2)/exe: bench_sum.h reduce_cuda.h transform_reduce_cuda.cpp
+exe/bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2)/exe: bench_sum_cuda.cpp reduce_cuda.cpp
+	mkdir -p exe/bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2)
+	cd exe/bench_sum_cuda_rbuf$(3)_team$(1)_thread$(2) && \
+	$(NVCXX) $(NVCXXFLAGS) -Xcompiler=-fopenmp -o exe \
 		-DBENCHMARK \
 		-DDEVPARAM_NTEAM=$(1) \
 		-DDEVPARAM_NTHREAD=$(2) \
 		-DDEVPARAM_RESBUFLEN=$(3) \
-		bench_sum_cuda.cpp reduce_cuda.cpp
+		../../bench_sum_cuda.cpp ../../reduce_cuda.cpp
 endef
 
 define all_bench_sum_omptarget =
-BENCH_SUM_EXES += bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4)
-bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4): bench_sum.h reduce_omptarget.h transform_reduce_omptarget.cpp
-bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4): bench_sum_omptarget.cpp reduce_omptarget.cpp
-	$(CXXT) $(CXXTFLAGS) -o $$@ \
+BENCH_SUM_EXES += exe/bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4)/exe
+exe/bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4)/exe: bench_sum.h reduce_omptarget.h transform_reduce_omptarget.cpp
+exe/bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4)/exe: bench_sum_omptarget.cpp reduce_omptarget.cpp
+	mkdir -p exe/bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4)
+	cd exe/bench_sum_omptarget_rbuf$(3)_team$(1)_thread$(2)_warp$(4) && \
+	$(CXXT) $(CXXTFLAGS) -o exe \
 		-DBENCHMARK \
 		-DDEVPARAM_NTEAM=$(1) \
 		-DDEVPARAM_NTHREAD=$(2) \
 		-DDEVPARAM_RESBUFLEN=$(3) \
 		-DDEVPARAM_WARP_THREADS=$(4) \
-		bench_sum_omptarget.cpp reduce_omptarget.cpp
+		../../bench_sum_omptarget.cpp ../../reduce_omptarget.cpp
 endef
 
 define all_bench_sum_omptarget_loop =
-BENCH_SUM_EXES += bench_sum_omptarget_loop_team$(1)_thread$(2)
-bench_sum_omptarget_loop_team$(1)_thread$(2): bench_sum.h
-bench_sum_omptarget_loop_team$(1)_thread$(2): bench_sum_omptarget_loop.cpp
-	$(CXXT) $(CXXTFLAGS) -o $$@ \
+BENCH_SUM_EXES += exe/bench_sum_omptarget_loop_team$(1)_thread$(2)/exe
+exe/bench_sum_omptarget_loop_team$(1)_thread$(2)/exe: bench_sum.h
+exe/bench_sum_omptarget_loop_team$(1)_thread$(2)/exe: bench_sum_omptarget_loop.cpp
+	mkdir -p exe/bench_sum_omptarget_loop_team$(1)_thread$(2)
+	cd exe/bench_sum_omptarget_loop_team$(1)_thread$(2) && \
+	$(CXXT) $(CXXTFLAGS) -o exe \
 		-DBENCHMARK \
 		-DDEVPARAM_NTEAM=$(1) \
 		-DDEVPARAM_NTHREAD=$(2) \
-		bench_sum_omptarget_loop.cpp
+		../../bench_sum_omptarget_loop.cpp
 endef
 
 $(foreach m,$(CTP_NTEAMS),$(foreach n,$(CTP_NTHREADS),$(foreach l,$(CTP_RESBUFLENS),$(eval $(call all_bench_sum_cuda,$(m),$(n),$(l))))))
 $(foreach m,$(CTP_NTEAMS),$(foreach n,$(CTP_NTHREADS),$(foreach l,$(CTP_RESBUFLENS),$(foreach w,$(CTP_OMPWARPS),$(eval $(call all_bench_sum_omptarget,$(m),$(n),$(l),$(w)))))))
 $(foreach m,$(CTP_NTEAMS),$(foreach n,$(CTP_NTHREADS),$(eval $(call all_bench_sum_omptarget_loop,$(m),$(n)))))
 
-BENCHMARKS = $(filter-out %thread8_warp16 %thread8_warp32 %thread8_warp64 %thread16_warp32 %thread16_warp64 %thread32_warp64,$(BENCH_SUM_EXES))
+BENCHMARKS = $(filter-out %thread8_warp16/exe %thread8_warp32/exe %thread8_warp64/exe %thread16_warp32/exe %thread16_warp64/exe %thread32_warp64/exe,$(BENCH_SUM_EXES))
 .PHONY: bench_sum
 bench_sum: $(BENCHMARKS)
 

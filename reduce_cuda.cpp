@@ -36,7 +36,7 @@ static double *hd_reduce=0;
 
 void initReduce(void) {
   size_t bytes = DEVPARAM_RESBUFLEN*8;
-  d_reduce = (double *) device_malloc(bytes);
+  d_reduce = (double *) device_malloc(DEVPARAM_NTEAM*8);
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, 0);
   if(deviceProp.canMapHostMemory) {

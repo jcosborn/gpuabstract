@@ -30,7 +30,7 @@ static unsigned int *d_count=0;
 
 void initReduce(void) {
   size_t bytes = DEVPARAM_RESBUFLEN*8;
-  d_reduce = (double *) device_malloc(bytes);
+  d_reduce = (double *) device_malloc(DEVPARAM_NTEAM*8);
   h_reduce = (double *) pinned_malloc(bytes);
   hd_reduce = (double *) device_malloc(bytes);
   d_count = (unsigned int *) device_malloc(QUDA_MAX_MULTI_REDUCE*sizeof(unsigned int));

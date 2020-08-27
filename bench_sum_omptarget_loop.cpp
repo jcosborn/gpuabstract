@@ -1,5 +1,8 @@
 #include"bench_sum.h"
 
+#ifndef DEVPARAM_WARP_STEPS
+#define DEVPARAM_WARP_STEPS -1
+#endif
 #include"transform_reduce_omptarget.cpp"
 
 int

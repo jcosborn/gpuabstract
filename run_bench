@@ -6,22 +6,48 @@ for r in 1 4 16 64 256 1024;do
 		fs+=(bench_sum_cuda_rbuf${r}_)
 done
 for r in 1 4 16 64 256 1024;do
-	for m in 32 64 128 256 512 1024;do
+	for m in 32 64 128 256 512 1024 2048 4096 8192 16384;do
 		fs+=(bench_sum_omptarget_rbuf${r}_team${m}_)
 	done
 done
 
+left(){
+	local -r f="$1"
+	local -i n=0 t=0
+	local o b
+	for b in "exe/$f"*/exe;do
+		((++t))
+		o="${b%/exe}"
+		o="${o#exe/}"
+		if [[ ! -s bench_out/$o ]];then
+			((++n))
+		fi
+	done
+	echo $n $t
+}
 if (($#==0));then
 	for ((i=0;i<${#fs[@]};++i));do
-		echo $i "${fs[i]}" $(ls "exe/${fs[i]}"*/exe|wc -l)
+		echo $i "${fs[i]}" $(left "${fs[i]}")
+	done
+elif [[ $1 == list ]];then
+	for ((i=0;i<${#fs[@]};++i));do
+		f="${fs[i]}"
+		for b in "exe/$f"*/exe;do
+			((++t))
+			o="${b%/exe}"
+			o="${o#exe/}"
+			if [[ ! -s bench_out/$o ]];then
+				echo $o
+			fi
+		done
 	done
 else
 	while (($#>0));do
 		i=$1
 		shift
 		((i>=${#fs[@]})) && continue
-		echo $i "${fs[i]}" $(ls "exe/${fs[i]}"*/exe|wc -l)
 		f="${fs[i]}"
+		echo $i "$f" $(left "$f")
 		for b in "exe/$f"*/exe;do
 			o="${b%/exe}"
 			o="${o#exe/}"

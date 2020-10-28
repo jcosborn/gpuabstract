@@ -167,7 +167,7 @@ double sum(queue q, TX *x, const int n)
 }
 
 int main() {
-  default_selector my_selector;
+  //default_selector my_selector;
   //queue q(my_selector);
   queue q = getQueue();
   qg = q;

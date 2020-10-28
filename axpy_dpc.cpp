@@ -50,7 +50,8 @@ void axpy(queue q, TA a, TX x, TY y, const int n)
 }
 
 int main() {
-  default_selector my_selector;
+  //default_selector my_selector;
+  host_selector my_selector;
   queue q(my_selector);
   auto dev = q.get_device();
   std::cout << "Device: " << dev.get_info<info::device::name>() << std::endl;

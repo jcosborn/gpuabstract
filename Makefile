@@ -41,7 +41,18 @@ NVLDFLAGS =
 #all: axpy_abs_omp
 #all: axpy_abs_cuda axpy_abs_dpc axpy_abs_omp
 #all: transform_reduce_cuda
-all: transform_reduce_dpc
+#all: transform_reduce_dpc
+#all: axpy_kern_dpc
+all: axpy_shared_dpc
+
+tgetptr: tgetptr.cpp
+	$(DPCXX) $(DPCXXFLAGS) -o $@ $< $(DPLDFLAGS)
+
+axpy_shared_dpc: axpy_shared.cpp backend_dpc.h
+	$(DPCXX) $(DPCXXFLAGS) -o $@ $< $(DPLDFLAGS)
+
+axpy_kern_dpc: axpy_kern.cpp backend_dpc.h
+	$(DPCXX) $(DPCXXFLAGS) -o $@ $< $(DPLDFLAGS)
 
 axpy_cuda: axpy_cuda.cpp
 	$(NVCXX) $(NVCXXFLAGS) -o $@ $< $(NVLDFLAGS)

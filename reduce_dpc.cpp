@@ -8,7 +8,8 @@ getQueue(void)
 {
   if(have_queue==0) {
     have_queue = 1;
-    default_selector my_selector;
+    //default_selector my_selector;
+    host_selector my_selector;
     qd = queue(my_selector);
   }
   return qd;

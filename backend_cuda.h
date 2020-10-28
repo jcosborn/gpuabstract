@@ -29,3 +29,40 @@ qudaMallocManaged(size_t size)
   }
   return p;
 }
+
+template <typename F, typename Arg, typename... Dims>
+__global__ void Kernel1d(F &f, Arg &arg, Dims... ndi)
+{
+  unsigned int i = globalIdx_x;
+  unsigned int gridSize = globalDim_x;
+  while(i < arg.threads.x) {
+    f(i);
+    i += gridSize;
+  }
+}
+
+
+struct Kern1d {
+  template <template <typename> class Functor, typename Arg>
+  void launch_host(const qudaStream_t &stream, const Arg &arg) const
+  {
+    Functor<Arg> f(const_cast<Arg &>(arg));
+    for (int i = 0; i < (int)arg.threads.x; i++) {
+      f(i);
+    }
+  }
+  template <template <typename> class Functor, typename Arg>
+  void launch_device(const qudaStream_t &stream, const Arg &arg) const
+  {
+    Functor<Arg> f(const_cast<Arg &>(arg));
+    auto nthreads = 32;
+    auto s = const_cast<qudaStream_t &>(stream);
+    qudaLaunch(2, nthreads, 0, s, Kernel1d, f, arg);
+  }
+  template <template <typename> class Functor, typename Arg>
+  void launch(const qudaStream_t &stream, const Arg &arg) const
+  {
+    //launch_host<Functor, Arg>(stream, arg);
+    launch_device<Functor, Arg>(stream, arg);
+  }
+};

@@ -43,7 +43,8 @@ getQueue(void)
 {
   if(have_queue==0) {
     have_queue = 1;
-    default_selector my_selector;
+    //default_selector my_selector;
+    host_selector my_selector;
     qd = queue(my_selector);
   }
   return qd;
@@ -91,3 +92,108 @@ qudaMallocManaged(size_t size)
 	 [=](nd_item<1> ndi) { \
 	   func0(__VA_ARGS__, ndi); \
 	 }); });
+
+template <typename T>
+struct SharedMemAcc {
+  using Acc = accessor<T,1,access::mode::read_write,access::target::local>;
+  Acc a;
+  SharedMemAcc(int n, handler &h): a(range<1>(n), h) {;}
+  template <typename Dim, typename Fun, typename Arg, typename Mem0, typename... Mem>
+  void launch_device(Dim ndi, Fun &f, const Arg &arg, Mem0 mem0, Mem... mem) const {
+    T *p = a.get_pointer();
+    mem0.launch_device(ndi, f, arg, mem..., p);
+  }
+};
+
+template <typename T>
+struct SharedMem {
+  int n;
+  SharedMem(int n): n(n) {;}
+  template <typename Fun, typename Arg, typename Mem0, typename... Mem>
+  void launch_device(handler &h, Fun &f, const Arg &arg, Mem0 mem0, Mem... mem) const {
+    SharedMemAcc<T> m(n, h);
+    mem0.launch_device(h, f, arg, mem..., m);
+  }
+};
+
+struct Kern1dRun {
+  template <typename Dim, typename Fun, typename Arg, typename... Mem>
+  void launch_device(Dim ndi, Fun &f, const Arg &arg, Mem... mem) const {
+    auto i = ndi.get_global_id(0);
+    auto gridSize = ndi.get_global_range(0);
+    while(i < arg.threads.x) {
+      f(i, mem...);
+      i += gridSize;
+    }
+  }
+};
+
+struct Kern1dArg {
+  range<1> gr;
+  range<1> lr;
+  Kern1dArg(int ng, int nl): gr(ng), lr(nl) {;}
+  template <typename Fun, typename Arg, typename Mem0, typename... Mem>
+  void launch_device(handler &h, Fun &f, const Arg &arg, Mem0 mem0, Mem... mem) const {
+    h.parallel_for<class launchDevice1d>
+      (nd_range(gr,lr),
+       [=](nd_item<1> ndi) {
+	 Kern1dRun kr;
+	 mem0.launch_device(ndi, f, arg, mem..., kr);
+	   });
+  }
+};
+
+struct Kern1d {
+  template <template <typename> class Functor, typename Arg>
+  void launch_host(const qudaStream_t &stream, const Arg &arg) const
+  {
+    Functor<Arg> f(const_cast<Arg &>(arg));
+    for (int i = 0; i < (int)arg.threads.x; i++) {
+      f(i);
+    }
+  }
+
+  template <template <typename> class Functor, typename Arg>
+  void launch_device(const qudaStream_t &stream, const Arg &arg) const
+  {
+    Functor<Arg> f(const_cast<Arg &>(arg));
+    auto nl = 32;  // local
+    auto ng = 2 * nl;  // global
+    //auto r = nd_range<1>(range<1>(nglobal), range<1>(nlocal));
+    auto s = const_cast<qudaStream_t &>(stream);
+    //qudaLaunch(2, nthreads, 0, s, Kernel, f, arg);
+    s.submit([&] (handler &h) {
+	       h.parallel_for<class test>
+		 (nd_range<1>(range<1>(ng), range<1>(nl)),
+		  [=](nd_item<1> ndi) {
+		    auto i = ndi.get_global_id(0);
+		    auto gridSize = ndi.get_global_range(0);
+		    while(i < arg.threads.x) {
+		      f(i);
+		      i += gridSize;
+		    }
+		  });
+	     });
+  }
+  template <template <typename> class Functor, typename Arg, typename Mem0, typename... Mem>
+  void launch_device(const qudaStream_t &stream, const Arg &arg, Mem0 mem0, Mem... mem) const
+  {
+    Functor<Arg> f(const_cast<Arg &>(arg));
+    auto nl = 32;  // local
+    auto ng = 2 * nl;  // global
+    //auto r = nd_range<1>(range<1>(nglobal), range<1>(nlocal));
+    auto s = const_cast<qudaStream_t &>(stream);
+    //qudaLaunch(2, nthreads, 0, s, Kernel, f, arg);
+    s.submit([&] (handler &h) {
+	       Kern1dArg ka(ng, nl);
+	       mem0.launch_device(h, f, arg, mem..., ka);
+	     });
+  }
+
+  template <template <typename> class Functor, typename Arg, typename... Mem>
+  void launch(const qudaStream_t &stream, const Arg &arg, Mem... mem) const
+  {
+    //launch_host<Functor, Arg>(stream, arg);
+    launch_device<Functor, Arg>(stream, arg, mem...);
+  }
+};

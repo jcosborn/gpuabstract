@@ -70,9 +70,24 @@ qudaGetDeviceProperties(qudaDeviceProp *p, int dev)
 }
 
 void
+qudaInitDevice(void)
+{
+  qudaDeviceProp prop;
+  int dev = 0;
+  qudaGetDeviceProperties(&prop, dev);
+  std::cout << "Device : " << prop.name << std::endl;
+}
+
+void
 qudaStreamSynchronize(qudaStream_t q)
 {
   q.wait();
+}
+
+void
+qudaStreamSynchronize(void)
+{
+  qudaStreamSynchronize(getQueue());
 }
 
 void *
@@ -193,6 +208,14 @@ struct Kern1d {
   template <template <typename> class Functor, typename Arg, typename... Mem>
   void launch(const qudaStream_t &stream, const Arg &arg, Mem... mem) const
   {
+    //launch_host<Functor, Arg>(stream, arg);
+    launch_device<Functor, Arg>(stream, arg, mem...);
+  }
+
+  template <template <typename> class Functor, typename Arg, typename... Mem>
+  void launch(const Arg &arg, Mem... mem) const
+  {
+    queue stream = getQueue();
     //launch_host<Functor, Arg>(stream, arg);
     launch_device<Functor, Arg>(stream, arg, mem...);
   }

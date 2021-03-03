@@ -70,13 +70,13 @@ struct ReduceArg {
 //__shared__ bool isLastBlockDone;
 
 template <int block_size_x, int block_size_y, typename T,
-	  bool do_sum=true, typename Reducer=cl::sycl::intel::plus<T>,
+	  bool do_sum=true, typename Reducer=ONEAPI::plus<T>,
 	  typename Dims>
 inline void
 reduce2d(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
   auto grp = ndi.get_group();
   Reducer r;
-  T aggregate = cl::sycl::intel::reduce(grp, in, r);
+  T aggregate = ONEAPI::reduce(grp, in, r);
 
   auto lid0 = ndi.get_local_id(0);
   auto lid1 = ndi.get_local_id(1);
@@ -103,7 +103,7 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
     isLastBlockDone = (value == (grpRg-1));
     //arg.result_d[idx] = isLastBlockDone;
   }
-  isLastBlockDone = cl::sycl::intel::broadcast(grp, isLastBlockDone);
+  isLastBlockDone = ONEAPI::broadcast(grp, isLastBlockDone);
 
   // finish the reduction if last block
   if (isLastBlockDone) {
@@ -115,7 +115,7 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
       i += block_size_x*block_size_y;
     }
 
-    sum = cl::sycl::intel::reduce(grp, sum, r);
+    sum = ONEAPI::reduce(grp, sum, r);
 
     // write out the final reduced value
     if (llid == 0) {
@@ -132,10 +132,10 @@ reduce2d(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
 }
 
 template <int block_size, typename T, bool do_sum = true,
-	  typename Reducer=cl::sycl::intel::plus<T>, typename Dims>
+	  typename Reducer=ONEAPI::plus<T>, typename Dims>
 inline void
 reduce(ReduceArg<T> arg, const T &in, const int idx, Dims ndi) {
   //reduce2d<block_size, 1, T, do_sum, Reducer>(arg, in, idx, ndi);
-  using red = cl::sycl::intel::plus<T>;
+  using red = ONEAPI::plus<T>;
   reduce2d<block_size, 1, T, do_sum, red>(arg, in, idx, ndi);
 }

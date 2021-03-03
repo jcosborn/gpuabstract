@@ -45,6 +45,9 @@ NVLDFLAGS =
 #all: axpy_kern_dpc
 all: axpy_shared_dpc
 
+matmul3_dpc: matmul3.cpp mat3.h backends.h backend_dpc.h
+	$(DPCXX) $(DPCXXFLAGS) -o $@ $< $(DPLDFLAGS)
+
 tgetptr: tgetptr.cpp
 	$(DPCXX) $(DPCXXFLAGS) -o $@ $< $(DPLDFLAGS)
 
